@@ -6,7 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Platform,
+  Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -31,15 +31,18 @@ interface Station {
   };
 }
 
-interface StationLine {
-  name: string;
-  lineId: string;
-}
-
-const stations: StationLine[] = stationsData.lines.flatMap((line) => 
+const stations: Station[] = stationsData.lines.flatMap((line) => 
   line.stations.map(station => ({
+    id: station.id,
     name: station.name,
-    lineId: "(" + line.name + ")",
+    lat: station.lat,
+    lng: station.lng,
+    order: station.order,
+    line: {
+      id: line.id,
+      hex_color: line.hex_color,
+      name: line.name,
+    },
   }))
 );
 
@@ -49,21 +52,12 @@ const fuse = new Fuse(stations, {
   keys: ['name'],
 });
 
-// Sample dataset of variants
-// const variants = [
-//   'Amazing', 'Brilliant', 'Captivating', 'Delightful', 'Elegant',
-//   'Fascinating', 'Gorgeous', 'Harmonious', 'Incredible', 'Jubilant',
-//   'Magnificent', 'Outstanding', 'Phenomenal', 'Remarkable', 'Spectacular',
-//   'Stunning', 'Terrific', 'Unbelievable', 'Wonderful', 'Extraordinary'
-// ];
-
-// Configure Fuse.js for fuzzy search
-
 export default function VariantScreen() {
   const [input, setInput] = useState('');
-  const [suggestions, setSuggestions] = useState<StationLine[]>([]);
-  const [selectedVariant, setSelectedVariant] = useState<StationLine | null>(null);
+  const [suggestions, setSuggestions] = useState<Station[]>([]);
+  const [selectedVariant, setSelectedVariant] = useState<Station | null>(null);
   const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
 
   const handleInputChange = useCallback((text: string) => {
     setInput(text);
@@ -75,7 +69,7 @@ export default function VariantScreen() {
     }
   }, []);
 
-  const handleSelectVariant = useCallback((variant: StationLine) => {
+  const handleSelectVariant = useCallback((variant: Station) => {
     setSelectedVariant(variant);
     setInput('');
     setSuggestions([]);
@@ -85,13 +79,37 @@ export default function VariantScreen() {
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
+        // Получаем текущее местоположение
         let location = await Location.getCurrentPositionAsync({});
         setCoordinates({
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
         });
+
+        // Начинаем отслеживать изменения местоположения
+        const subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 1000, // Обновление каждую секунду
+            distanceInterval: 10, // Обновление при перемещении на 10 метров
+          },
+          (newLocation) => {
+            setCoordinates({
+              latitude: newLocation.coords.latitude,
+              longitude: newLocation.coords.longitude,
+            });
+          }
+        );
+        setLocationSubscription(subscription);
       }
     })();
+
+    // Очистка подписки при размонтировании компонента
+    return () => {
+      if (locationSubscription) {
+        locationSubscription.remove();
+      }
+    };
   }, []);
 
   return (
@@ -119,7 +137,7 @@ export default function VariantScreen() {
                   style={styles.suggestionItem}
                   onPress={() => handleSelectVariant(suggestion)}>
                   <Text style={styles.suggestionText}>{suggestion.name}</Text>
-                  <Text style={styles.suggestionText}>{suggestion.lineId}</Text>
+                  <Text style={styles.suggestionText}>{suggestion.line.name}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -129,8 +147,14 @@ export default function VariantScreen() {
 
       {selectedVariant && (
         <View style={styles.selectedContainer}>
-          <Text style={styles.selectedLabel}>Выберите станцию:</Text>
+          <Text style={styles.selectedLabel}>Выбранная станция:</Text>
           <Text style={styles.selectedVariant}>{selectedVariant.name}</Text>
+          {coordinates && (
+            <View style={styles.coordinatesContainer}>
+              <Text style={styles.selectedLabel}>Расстояние до выбранной станции:</Text>
+              <Text style={styles.selectedVariant}>{(((selectedVariant.lat - coordinates.latitude)**2 + (selectedVariant.lng - coordinates.longitude)**2)**0.5 * 111.3).toFixed(3)} км</Text>
+            </View>
+        )}
         </View>
       )}
       {coordinates && (
