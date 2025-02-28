@@ -16,51 +16,54 @@ import Animated, {
   FadeOutDown,
 } from 'react-native-reanimated';
 import * as Location from 'expo-location';
-
-// Sample dataset of variants
-const variants = [
-  'Amazing', 'Brilliant', 'Captivating', 'Delightful', 'Elegant',
-  'Fascinating', 'Gorgeous', 'Harmonious', 'Incredible', 'Jubilant',
-  'Magnificent', 'Outstanding', 'Phenomenal', 'Remarkable', 'Spectacular',
-  'Stunning', 'Terrific', 'Unbelievable', 'Wonderful', 'Extraordinary'
-];
-
-// Configure Fuse.js for fuzzy search
-const fuse = new Fuse(variants, {
-  includeScore: true,
-  threshold: 0.4,
-  keys: ['']
-});
+import stationsData from '@/assets/stations.json';
 
 interface Station {
-  id: number;
+  id: string;
   name: string;
-  // Add other properties if needed
+  lat: number;
+  lng: number;
+  order: number;
+  line: {
+    id: string;
+    hex_color: string;
+    name: string;
+  };
 }
+
+interface StationLine {
+  name: string;
+  lineId: string;
+}
+
+const stations: StationLine[] = stationsData.lines.flatMap((line) => 
+  line.stations.map(station => ({
+    name: station.name,
+    lineId: "(" + line.name + ")",
+  }))
+);
+
+const fuse = new Fuse(stations, {
+  includeScore: true,
+  threshold: 0.4,
+  keys: ['name'],
+});
+
+// Sample dataset of variants
+// const variants = [
+//   'Amazing', 'Brilliant', 'Captivating', 'Delightful', 'Elegant',
+//   'Fascinating', 'Gorgeous', 'Harmonious', 'Incredible', 'Jubilant',
+//   'Magnificent', 'Outstanding', 'Phenomenal', 'Remarkable', 'Spectacular',
+//   'Stunning', 'Terrific', 'Unbelievable', 'Wonderful', 'Extraordinary'
+// ];
+
+// Configure Fuse.js for fuzzy search
 
 export default function VariantScreen() {
   const [input, setInput] = useState('');
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<StationLine[]>([]);
+  const [selectedVariant, setSelectedVariant] = useState<StationLine | null>(null);
   const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
-
-  const [stations, setStations] = useState<string[]>([]);
-
-  // // Получаем названия станций из API
-  // useEffect(() => {
-  //   const fetchStations = async () => {
-  //     try {
-  //       const response = await fetch('https://api.hh.ru/metro/1');
-  //       const data = await response.json();
-  //       const stationNames = data.stations.map((station: Station) => station.name); // Извлекаем названия станций
-  //       setStations(stationNames);
-  //     } catch (error) {
-  //       console.error('Error fetching stations:', error);
-  //     }
-  //   };
-
-  //   fetchStations();
-  // }, []);
 
   const handleInputChange = useCallback((text: string) => {
     setInput(text);
@@ -72,7 +75,7 @@ export default function VariantScreen() {
     }
   }, []);
 
-  const handleSelectVariant = useCallback((variant: string) => {
+  const handleSelectVariant = useCallback((variant: StationLine) => {
     setSelectedVariant(variant);
     setInput('');
     setSuggestions([]);
@@ -115,7 +118,8 @@ export default function VariantScreen() {
                   key={index}
                   style={styles.suggestionItem}
                   onPress={() => handleSelectVariant(suggestion)}>
-                  <Text style={styles.suggestionText}>{suggestion}</Text>
+                  <Text style={styles.suggestionText}>{suggestion.name}</Text>
+                  <Text style={styles.suggestionText}>{suggestion.lineId}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -126,7 +130,7 @@ export default function VariantScreen() {
       {selectedVariant && (
         <View style={styles.selectedContainer}>
           <Text style={styles.selectedLabel}>Выберите станцию:</Text>
-          <Text style={styles.selectedVariant}>{selectedVariant}</Text>
+          <Text style={styles.selectedVariant}>{selectedVariant.name}</Text>
         </View>
       )}
       {coordinates && (
@@ -188,6 +192,7 @@ const styles = StyleSheet.create({
   suggestionText: {
     fontSize: 16,
     color: '#1e293b',
+    marginRight: 10
   },
   selectedContainer: {
     margin: 20,
