@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Platform
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -16,6 +16,7 @@ import Animated, {
   FadeOutDown,
 } from 'react-native-reanimated';
 import * as Location from 'expo-location';
+import { Audio } from 'expo-av';
 import stationsData from '@/assets/stations.json';
 
 interface Station {
@@ -31,7 +32,7 @@ interface Station {
   };
 }
 
-const stations: Station[] = stationsData.lines.flatMap((line) => 
+const stations: Station[] = stationsData.lines.flatMap((line) =>
   line.stations.map(station => ({
     id: station.id,
     name: station.name,
@@ -58,6 +59,9 @@ export default function VariantScreen() {
   const [selectedVariant, setSelectedVariant] = useState<Station | null>(null);
   const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isWaiting, setIsWaiting] = useState(false);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   const handleInputChange = useCallback((text: string) => {
     setInput(text);
@@ -74,6 +78,50 @@ export default function VariantScreen() {
     setInput('');
     setSuggestions([]);
   }, []);
+
+  // Функция для воспроизведения музыки
+  const playBackgroundMusic = async () => {
+    try {
+      if (soundRef.current) {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded && status.isPlaying) {
+          return;
+        }
+      }
+
+      // Настраиваем аудио режим
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+      });
+
+      // Загружаем и воспроизводим звук
+      const { sound } = await Audio.Sound.createAsync(
+        require('@/assets/alert.mp3'), // Убедитесь, что путь к файлу правильный
+        { shouldPlay: true, isLooping: true }
+      );
+
+      soundRef.current = sound;
+      setIsPlaying(true);
+
+      // Обработчик окончания воспроизведения
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && 'didJustFinish' in status && status.didJustFinish) {
+          setIsPlaying(false);
+        }
+      });
+    } catch (error) {
+      console.error('Ошибка воспроизведения звука:', error);
+    }
+  };
+
+  // Функция для остановки музыки
+  const stopBackgroundMusic = async () => {
+    if (soundRef.current) {
+      await soundRef.current.stopAsync();
+      setIsPlaying(false);    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -94,23 +142,41 @@ export default function VariantScreen() {
             distanceInterval: 10, // Обновление при перемещении на 10 метров
           },
           (newLocation) => {
-            setCoordinates({
+            const newCoordinates = {
               latitude: newLocation.coords.latitude,
               longitude: newLocation.coords.longitude,
-            });
+            };
+            setCoordinates(newCoordinates);
+
+            // Проверка расстояния до выбранной станции
+            if (selectedVariant && isWaiting) {
+              const distance = Math.sqrt(
+                Math.pow(selectedVariant.lat - newCoordinates.latitude, 2) +
+                Math.pow(selectedVariant.lng - newCoordinates.longitude, 2)
+              ) * 111.3; // Переводим в километры
+
+              if (distance < 1 && !isPlaying) {
+                playBackgroundMusic();
+              } else if (distance >= 1 && isPlaying) {
+                stopBackgroundMusic();
+              }
+            }
           }
         );
         setLocationSubscription(subscription);
       }
     })();
 
-    // Очистка подписки при размонтировании компонента
+    // Очистка подписки и звука при размонтировании компонента
     return () => {
       if (locationSubscription) {
         locationSubscription.remove();
       }
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
     };
-  }, []);
+  }, [selectedVariant, isWaiting, isPlaying]); // Зависимость от selectedVariant, isWaiting и isPlaying
 
   return (
     <SafeAreaView style={styles.container}>
@@ -152,24 +218,39 @@ export default function VariantScreen() {
           {coordinates && (
             <View style={styles.coordinatesContainer}>
               <Text style={styles.selectedLabel}>Расстояние до выбранной станции:</Text>
-              <Text style={styles.selectedVariant}>{(((selectedVariant.lat - coordinates.latitude)**2 + (selectedVariant.lng - coordinates.longitude)**2)**0.5 * 111.3).toFixed(3)} км</Text>
+              <Text style={styles.selectedVariant}>{(((selectedVariant.lat - coordinates.latitude) ** 2 + (selectedVariant.lng - coordinates.longitude) ** 2) ** 0.5 * 111.3).toFixed(3)} км</Text>
+              {isPlaying && (
+                <Text style={[styles.selectedVariant, {color: '#7A27AB', marginTop: 10}]}>
+                  ♫
+                </Text>
+              )}
             </View>
-        )}
+          )}
         </View>
       )}
       {coordinates && (
-          <View style={styles.coordinatesContainer}>
-            <Text style={styles.coordinatesText}>
-              Latitude: {coordinates.latitude.toFixed(6)}
-            </Text>
-            <Text style={styles.coordinatesText}>
-              Longitude: {coordinates.longitude.toFixed(6)}
-            </Text>
-          </View>
-        )}
-        <TouchableOpacity style={styles.button} onPress={() => console.log('Button pressed!')}>
-          <Text style={styles.buttonText}>Поехали</Text>
-        </TouchableOpacity>
+        <View style={styles.coordinatesContainer}>
+          <Text style={styles.coordinatesText}>
+            Latitude: {coordinates.latitude.toFixed(6)}
+          </Text>
+          <Text style={styles.coordinatesText}>
+            Longitude: {coordinates.longitude.toFixed(6)}
+          </Text>
+        </View>
+      )}
+      <TouchableOpacity 
+        style={styles.button} 
+        onPress={() => {
+          if (isPlaying) {
+            stopBackgroundMusic();
+          }
+          setIsWaiting(!isWaiting);
+        }}
+      >
+        <Text style={styles.buttonText}>
+          {isWaiting ? 'Остановить' : 'Поехали'}
+        </Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -242,35 +323,34 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1e293b',
   },
-    map: {
-      width: "100%",
-      height: "100%",
-    },
-    coordinatesContainer: {
-      backgroundColor: 'rgba(255, 255, 255)',
-      padding: 10,
-      borderRadius: 5,
-      margin: 20,
-    },
-    coordinatesText: {
-      fontSize: 16,
-      color: 'black',
-    },
-    button: {
-      position: 'absolute',
-      bottom: 0,
-      width: '90%',
-      alignSelf: 'center',
-      backgroundColor: '#7A27AB',
-      padding: 16,
-      borderRadius: 12,
-      alignItems: 'center',
-      margin: 20,
-    },
-    
-    buttonText: {
-      color: '#ffffff',
-      fontSize: 16,
-      fontWeight: '600',
-    }
+  map: {
+    width: "100%",
+    height: "100%",
+  },
+  coordinatesContainer: {
+    backgroundColor: 'rgba(255, 255, 255)',
+    padding: 10,
+    borderRadius: 5,
+    margin: 20,
+  },
+  coordinatesText: {
+    fontSize: 16,
+    color: 'black',
+  },
+  button: {
+    position: 'absolute',
+    bottom: 0,
+    width: '90%',
+    alignSelf: 'center',
+    backgroundColor: '#7A27AB',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    margin: 20,
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  }
 });
