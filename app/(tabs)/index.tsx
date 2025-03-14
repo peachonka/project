@@ -5,8 +5,10 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
+  ToastAndroid,
   ScrollView,
   Platform,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -17,7 +19,154 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Location from 'expo-location';
 import { Audio } from 'expo-av';
+import * as Notifications from 'expo-notifications';
 import stationsData from '@/assets/stations.json';
+import * as TaskManager from 'expo-task-manager';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Constants for AsyncStorage keys
+const SELECTED_STATION_KEY = 'selectedStation';
+const IS_PLAYING_KEY = 'isPlayingAlarm';
+const LOCATION_TASK_NAME = 'location-tracking';
+
+// Define interfaces for the coordinate types
+interface LocationCoords {
+  latitude: number;
+  longitude: number;
+}
+
+interface StationCoords {
+  lat: number;
+  lng: number;
+}
+
+// Update the function with proper type annotations
+function calculateDistance(coords1: LocationCoords, coords2: StationCoords): number {
+  const lat1 = coords1.latitude;
+  const lon1 = coords1.longitude;
+  const lat2 = coords2.lat;
+  const lon2 = coords2.lng;
+  
+  // Rest of the function remains the same
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  const distance = R * c;
+  
+  return distance;
+}
+
+const saveSelectedStation = async (station: Station) => {
+  if (station) {
+    try {
+      await AsyncStorage.setItem(SELECTED_STATION_KEY, JSON.stringify(station));
+      await AsyncStorage.setItem(IS_PLAYING_KEY, 'false');
+      console.log('Saved station to AsyncStorage:', station.name);
+    } catch (e) {
+      console.error('Failed to save station to AsyncStorage:', e);
+    }
+  }
+};
+interface LocationTaskData {
+  locations: Array<{
+    coords: {
+      latitude: number;
+      longitude: number;
+      altitude: number | null;
+      accuracy: number | null;
+      heading: number | null;
+      speed: number | null;
+    };
+    timestamp: number;
+  }>;
+}
+
+// Update the TaskManager.defineTask function
+TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: { data?: LocationTaskData, error?: any }) => {
+  if (error) {
+    console.error('Error in background location task:', error);
+    return;
+  }
+  
+  if (data && data.locations && data.locations.length > 0) {
+    const location = data.locations[0];
+
+    try {
+      // Get the selected station from AsyncStorage
+      const stationData = await AsyncStorage.getItem(SELECTED_STATION_KEY);
+      const isPlayingStr = await AsyncStorage.getItem(IS_PLAYING_KEY);
+      const isPlaying = isPlayingStr === 'true';
+      
+      if (stationData) {
+        const station = JSON.parse(stationData);
+        
+        // Calculate distance between current location and selected station
+        const distance = calculateDistance(location.coords, station);
+        console.log(`Background task: Distance to ${station.name} is ${distance.toFixed(2)} km`);
+        
+        // If within 1km and not already playing alarm
+        if (distance < 1 && !isPlaying) {
+          // Set playing flag in AsyncStorage
+          await AsyncStorage.setItem(IS_PLAYING_KEY, 'true');
+          
+          // Try to play sound via notification with custom sound
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "Вы приближаетесь к станции!",
+              body: `До станции ${station.name} менее 1 км`,
+              data: { station, action: 'alarm' },
+              sound: 'alert.mp3', // Make sure this file is in the correct location
+            },
+            trigger: null,
+          });
+          
+          // Also try to play sound directly as a backup
+          try {
+            const { sound } = await Audio.Sound.createAsync(
+              { uri: 'asset:/alert.mp3' },
+              { shouldPlay: true, isLooping: true }
+            );
+            
+            // We can't store this reference in the task, but we can play it
+            await sound.playAsync();
+          } catch (audioError) {
+            console.error('Failed to play audio in background task:', audioError);
+          }
+        } 
+        // If more than 1km away and alarm is playing, stop it
+        else if (distance >= 1 && isPlaying) {
+          await AsyncStorage.setItem(IS_PLAYING_KEY, 'false');
+          
+          // Send a notification to inform the user
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "Будильник остановлен",
+              body: `Вы удалились от станции ${station.name}`,
+              data: { action: 'stop' },
+            },
+            trigger: null,
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Error in background task:', e);
+    }
+  }
+});
+
+// Настройка обработки уведомлений
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 interface Station {
   id: string;
@@ -57,11 +206,58 @@ export default function VariantScreen() {
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState<Station[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<Station | null>(null);
+  const [selectedForAlarm, setSelectedForAlarm] = useState<Station | null>(null);
   const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
+
+  // Запрос разрешения на уведомления
+  useEffect(() => {
+    const requestNotificationPermission = async () => {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('Разрешение на уведомления не предоставлено!');
+      }
+    };
+    requestNotificationPermission();
+  }, []);
+
+  // Отправка уведомления при выходе в фоновый режим
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'background' && isWaiting) {
+        
+        // Pre-load the sound in background
+        if (!soundRef.current) {
+          const { sound } = await Audio.Sound.createAsync(
+            require('@/assets/alert.mp3'),
+            { shouldPlay: false, isLooping: true }
+          );
+          soundRef.current = sound;
+        }
+      }
+    });
+  
+    return () => {
+      subscription.remove();
+    };
+  }, [isWaiting, selectedForAlarm]);
+
+  // Обработка нажатия на уведомление
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const { action } = response.notification.request.content.data;
+      if (action === 'stop') {
+        stopBackgroundMusic();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   const handleInputChange = useCallback((text: string) => {
     setInput(text);
@@ -125,8 +321,32 @@ export default function VariantScreen() {
 
   useEffect(() => {
     (async () => {
+      // Request background location permissions
+      if (Platform.OS === 'android') {
+        const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
+        if (foregroundStatus !== 'granted') return;
+        
+        const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
+        if (backgroundStatus !== 'granted') {
+          console.warn('Background location permission not granted!');
+        }
+      }
+      
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
+        // Start a foreground service on Android
+        if (Platform.OS === 'android' && isWaiting) {
+          await Location.startLocationUpdatesAsync('location-tracking', {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 5000,
+            distanceInterval: 10,
+            foregroundService: {
+              notificationTitle: "Метробудильник активен",
+              notificationBody: "Отслеживание местоположения...",
+              notificationColor: "#7A27AB",
+            },
+          });
+        }
         // Получаем текущее местоположение
         let location = await Location.getCurrentPositionAsync({});
         setCoordinates({
@@ -149,10 +369,10 @@ export default function VariantScreen() {
             setCoordinates(newCoordinates);
 
             // Проверка расстояния до выбранной станции
-            if (selectedVariant && isWaiting) {
+            if (selectedForAlarm && isWaiting) {
               const distance = Math.sqrt(
-                Math.pow(selectedVariant.lat - newCoordinates.latitude, 2) +
-                Math.pow(selectedVariant.lng - newCoordinates.longitude, 2)
+                Math.pow(selectedForAlarm.lat - newCoordinates.latitude, 2) +
+                Math.pow(selectedForAlarm.lng - newCoordinates.longitude, 2)
               ) * 111.3; // Переводим в километры
 
               if (distance < 1 && !isPlaying) {
@@ -169,11 +389,35 @@ export default function VariantScreen() {
 
     // Очистка подписки и звука при размонтировании компонента
     return () => {
+      // For location tracking task
+      if (Platform.OS === 'android') {
+        // Use a self-invoking function to handle the Promise
+        (async () => {
+          try {
+            const isTracking = await Location.hasStartedLocationUpdatesAsync('location-tracking');
+            if (isTracking) {
+              await Location.stopLocationUpdatesAsync('location-tracking');
+            }
+          } catch (error) {
+            console.log('Error checking location tracking status:', error);
+          }
+        })();
+      }
+      
+      // For location subscription
       if (locationSubscription) {
         locationSubscription.remove();
       }
+      
+      // For sound
       if (soundRef.current) {
-        soundRef.current.unloadAsync();
+        (async () => {
+          try {
+            if (soundRef.current) await soundRef.current.unloadAsync();
+          } catch (error) {
+            console.log('Error unloading sound:', error);
+          }
+        })();
       }
     };
   }, [selectedVariant, isWaiting, isPlaying]); // Зависимость от selectedVariant, isWaiting и isPlaying
@@ -219,13 +463,14 @@ export default function VariantScreen() {
             <View style={styles.coordinatesContainer}>
               <Text style={styles.selectedLabel}>Расстояние до выбранной станции:</Text>
               <Text style={styles.selectedVariant}>{(((selectedVariant.lat - coordinates.latitude) ** 2 + (selectedVariant.lng - coordinates.longitude) ** 2) ** 0.5 * 111.3).toFixed(3)} км</Text>
-              {isPlaying && (
-                <Text style={[styles.selectedVariant, {color: '#7A27AB', marginTop: 10}]}>
-                  ♫
-                </Text>
-              )}
             </View>
           )}
+        </View>
+      )}
+      {isWaiting && selectedForAlarm && (
+        <View style={styles.selectedContainer}>
+          <Text style={styles.selectedLabel}>Будильник зазвонит при приближении к станции:</Text>
+          <Text style={styles.selectedVariant}>{selectedForAlarm.name}</Text>
         </View>
       )}
       {coordinates && (
@@ -239,12 +484,17 @@ export default function VariantScreen() {
         </View>
       )}
       <TouchableOpacity 
-        style={styles.button} 
+        style={selectedVariant ? styles.button : styles.buttonDisabled} 
         onPress={() => {
           if (isPlaying) {
             stopBackgroundMusic();
           }
-          setIsWaiting(!isWaiting);
+          if (selectedVariant) {
+            setSelectedForAlarm(selectedVariant); // Обновляем selectedForAlarm
+            setIsWaiting(!isWaiting); // Затем включаем отслеживание
+          } else {
+            ToastAndroid.show('Необходимо выбрать станцию', ToastAndroid.SHORT);
+          }
         }}
       >
         <Text style={styles.buttonText}>
@@ -343,6 +593,17 @@ const styles = StyleSheet.create({
     width: '90%',
     alignSelf: 'center',
     backgroundColor: '#7A27AB',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    margin: 20,
+  },
+  buttonDisabled:{
+    position: 'absolute',
+    bottom: 0,
+    width: '90%',
+    alignSelf: 'center',
+    backgroundColor: 'gray',
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
