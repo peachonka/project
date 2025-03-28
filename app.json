@@ -48,7 +48,8 @@
             }
           }
         ]
-      }
+      },
+      "scheme": "myappandroid"
     },
     "ios": {
       "supportsTablet": true,
