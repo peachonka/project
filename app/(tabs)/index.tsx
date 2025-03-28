@@ -27,8 +27,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Constants
 const SELECTED_STATION_KEY = 'selectedStation';
 const IS_PLAYING_KEY = 'isPlayingAlarm';
+const IS_WAITING_KEY = 'isWaitingAlarm';
 const LOCATION_TASK_NAME = 'location-tracking';
-const ALARM_DISTANCE_KM = 1.0; // Distance in km to trigger alarm
+const ALARM_DISTANCE_KM = 1.0;
 
 // Types
 interface Station {
@@ -118,34 +119,31 @@ Notifications.setNotificationHandler({
 });
 
 // Define background location task
-TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: { data?: LocationTaskData, error?: any }) => {
+TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error } : { data?: LocationTaskData, error?: any }) => {
   if (error) {
     console.error('Error in background location task:', error);
     return;
   }
   
-  if (data && data.locations && data.locations.length > 0) {
+  if (data && data?.locations?.length > 0) {
     const location = data.locations[0];
 
     try {
-      // Get the selected station from AsyncStorage
-      const stationData = await AsyncStorage.getItem(SELECTED_STATION_KEY);
-      const isPlayingStr = await AsyncStorage.getItem(IS_PLAYING_KEY);
-      const isPlaying = isPlayingStr === 'true';
+      const [stationData, isPlayingStr, isWaitingStr] = await Promise.all([
+        AsyncStorage.getItem(SELECTED_STATION_KEY),
+        AsyncStorage.getItem(IS_PLAYING_KEY),
+        AsyncStorage.getItem(IS_WAITING_KEY)
+      ]);
       
-      if (stationData) {
+      if (stationData && isWaitingStr === 'true') {
         const station = JSON.parse(stationData);
-        
-        // Calculate distance between current location and selected station
+        const isPlaying = isPlayingStr === 'true';
         const distance = calculateDistance(location.coords, station);
-        console.log(`Background task: Distance to ${station.name} is ${distance.toFixed(2)} km`);
         
-        // If within alarm distance and not already playing alarm
+        console.log(`Distance to ${station.name}: ${distance.toFixed(2)} km`);
+        
         if (distance < ALARM_DISTANCE_KM && !isPlaying) {
-          // Set playing flag in AsyncStorage
           await AsyncStorage.setItem(IS_PLAYING_KEY, 'true');
-          
-          // Send notification
           await Notifications.scheduleNotificationAsync({
             content: {
               title: "Вы приближаетесь к станции!",
@@ -154,33 +152,9 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: { data?: Loca
               sound: true,
               android: {
                 channelId: 'alarm',
-                actions: [
-                  {
-                    title: 'Остановить', // Текст кнопки
-                    pressAction: {
-                      id: 'stop', // Уникальный идентификатор действия
-                    },
-                  },
-                ],
+                actions: [{ title: 'Остановить', pressAction: { id: 'stop' } }],
               },
-            } as ExtendedNotificationContentInput,
-            trigger: null, // Немедленное уведомление
-          });
-        } 
-        // If more than alarm distance away and alarm is playing, stop it
-        else if (distance >= ALARM_DISTANCE_KM && isPlaying) {
-          await AsyncStorage.setItem(IS_PLAYING_KEY, 'false');
-          
-          // Send a notification to inform the user
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: "Будильник остановлен",
-              body: `Вы удалились от станции ${station.name}`,
-              data: { action: 'stop' },
-              android: {
-                channelId: 'alarm',
-              }
-            } as ExtendedNotificationContentInput,
+            } as ExtendedNotificationContentInput, // Немедленное уведомление
             trigger: null,
           });
         }
@@ -216,16 +190,40 @@ const fuse = new Fuse(stations, {
 
 // Main component
 export default function VariantScreen() {
-  // State
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState<Station[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<Station | null>(null);
   const [selectedForAlarm, setSelectedForAlarm] = useState<Station | null>(null);
-  const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [coordinates, setCoordinates] = useState<LocationCoords | null>(null);
   const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
+
+  // Загрузка начального состояния
+  useEffect(() => {
+    const loadState = async () => {
+      try {
+        const [stationData, isPlayingStr, isWaitingStr] = await Promise.all([
+          AsyncStorage.getItem(SELECTED_STATION_KEY),
+          AsyncStorage.getItem(IS_PLAYING_KEY),
+          AsyncStorage.getItem(IS_WAITING_KEY)
+        ]);
+        
+        if (stationData) {
+          const station = JSON.parse(stationData);
+          setSelectedVariant(station);
+          setSelectedForAlarm(station);
+        }
+        setIsPlaying(isPlayingStr === 'true');
+        setIsWaiting(isWaitingStr === 'true');
+      } catch (e) {
+        console.error('Failed to load state:', e);
+      }
+    };
+    
+    loadState();
+  }, []);
 
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -284,12 +282,14 @@ export default function VariantScreen() {
         // Остановить звук и сбросить состояние
         await stopBackgroundMusic();
         await AsyncStorage.setItem(IS_PLAYING_KEY, 'false');
+        await AsyncStorage.setItem(IS_WAITING_KEY, 'false');
         setIsPlaying(false);
         setIsWaiting(false);
         
       } else if (data.action === 'alarm') {
         // Запустить звук
         await playBackgroundMusic();
+        await AsyncStorage.setItem(IS_WAITING_KEY, 'true');
         await AsyncStorage.setItem(IS_PLAYING_KEY, 'true');
         setIsPlaying(true);
       }
@@ -522,71 +522,116 @@ export default function VariantScreen() {
 
   // Handle start/stop button press
   const handleStartStop = async () => {
-    if (isPlaying) {
-      stopBackgroundMusic();
-      await AsyncStorage.setItem(IS_PLAYING_KEY, 'false');
+    if (!selectedVariant) {
+      ToastAndroid.show('Необходимо выбрать станцию', ToastAndroid.SHORT);
+      return;
     }
-    
-    if (selectedVariant) {
-      const newWaitingState = !isWaiting;
-      setIsWaiting(newWaitingState);
+
+    const newWaitingState = !isWaiting;
+    setIsWaiting(newWaitingState);
+    await AsyncStorage.setItem(IS_WAITING_KEY, String(newWaitingState));
+
+    if (newWaitingState) {
+      setSelectedForAlarm(selectedVariant);
+      await saveSelectedStation(selectedVariant);
       
-      if (newWaitingState) {
-        // Starting to wait - save the selected station
-        setSelectedForAlarm(selectedVariant);
-        await saveSelectedStation(selectedVariant);
-        
-        // Start the background location updates if not already started
-        if (Platform.OS === 'android') {
-          try {
-            const isTracking = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)
-              .catch(() => false);
-            if (!isTracking) {
-              await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-                accuracy: Location.Accuracy.High,
-                timeInterval: 5000,
-                distanceInterval: 10,
-                foregroundService: {
-                  notificationTitle: "Метробудильник активен",
-                  notificationBody: "Отслеживание местоположения...",
-                  notificationColor: "#7A27AB",
-                },
-              });
-              console.log("Background location tracking started");
-            }
-          } catch (error) {
-            console.log("Starting location tracking for the first time");
-            await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-              accuracy: Location.Accuracy.High,
-              timeInterval: 5000,
-              distanceInterval: 10,
-              foregroundService: {
-                notificationTitle: "Метробудильник активен",
-                notificationBody: "Отслеживание местоположения...",
-                notificationColor: "#7A27AB",
-              },
-            });
-          }
-        }
-      } else {
-        // Stopping - clear the selected station
-        if (Platform.OS === 'android') {
-          try {
-            const isTracking = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)
-              .catch(() => false);
-            if (isTracking) {
-              await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
-              console.log("Background location tracking stopped");
-            }
-          } catch (error) {
-            console.log("Error stopping location tracking:", error);
-          }
+      if (Platform.OS === 'android') {
+        try {
+          await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 5000,
+            distanceInterval: 10,
+            foregroundService: {
+              notificationTitle: "Метробудильник активен",
+              notificationBody: "Отслеживание местоположения...",
+              notificationColor: "#7A27AB",
+            },
+          });
+        } catch (error) {
+          console.error("Error starting location tracking:", error);
         }
       }
     } else {
-      ToastAndroid.show('Необходимо выбрать станцию', ToastAndroid.SHORT);
+      await stopBackgroundMusic();
+      await AsyncStorage.setItem(IS_PLAYING_KEY, 'false');
+      setSelectedForAlarm(null);
+      await AsyncStorage.removeItem(SELECTED_STATION_KEY);
+      
+      if (Platform.OS === 'android') {
+        try {
+          await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+        } catch (error) {
+          console.error("Error stopping location tracking:", error);
+        }
+      }
     }
   };
+
+  // Отслеживание местоположения (с небольшими оптимизациями)
+  useEffect(() => {
+    let isMounted = true;
+    let sub: Location.LocationSubscription | null = null;
+
+    const setupLocation = async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+
+      if (Platform.OS === 'android') {
+        await Location.requestBackgroundPermissionsAsync();
+      }
+
+      try {
+        const location = await Location.getCurrentPositionAsync({});
+        if (isMounted) setCoordinates(location.coords);
+        
+        sub = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 1000,
+            distanceInterval: 10,
+          },
+          (newLocation) => {
+            if (isMounted) {
+              setCoordinates(newLocation.coords);
+              if (selectedForAlarm && isWaiting) {
+                const distance = calculateDistance(newLocation.coords, selectedForAlarm);
+                if (distance < ALARM_DISTANCE_KM && !isPlaying) {
+                  playBackgroundMusic();
+                } else if (distance >= ALARM_DISTANCE_KM && isPlaying) {
+                  stopBackgroundMusic();
+                }
+              }
+            }
+          }
+        );
+        if (isMounted) setLocationSubscription(sub);
+      } catch (error) {
+        console.error('Location error:', error);
+      }
+    };
+
+    setupLocation();
+
+    return () => {
+      isMounted = false;
+      if (sub) sub.remove();
+    };
+  }, [selectedForAlarm, isWaiting, isPlaying]);
+
+  // Очистка при размонтировании
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync().catch(console.error);
+      }
+      if (locationSubscription) {
+        locationSubscription.remove();
+      }
+      if (Platform.OS === 'android') {
+        Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(console.error);
+      }
+    };
+  }, [locationSubscription]);
 
   // Render UI
   return (
