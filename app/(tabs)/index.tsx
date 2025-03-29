@@ -101,33 +101,6 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: { data?: any;
 
         if (distance < ALARM_DISTANCE_KM && isPlayingStr !== "true") {
           await AsyncStorage.setItem(IS_PLAYING_KEY, "true")
-
-          // Создаем уведомление с кнопкой "Остановить" в правильном формате для Android
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: "Вы приближаетесь к станции!",
-              body: `До станции ${station.name} менее ${ALARM_DISTANCE_KM} км`,
-              data: {
-                action: "alarm",
-                stationName: station.name,
-              },
-              sound: true,
-              android: {
-                channelId: "alarm",
-                // Правильный формат для кнопок в Android уведомлениях
-                actions: [
-                  {
-                    title: "Остановить",
-                    identifier: "stop",
-                  },
-                ],
-                color: "#7A27AB",
-                sticky: true, // Делаем уведомление постоянным
-                autoCancel: false, // Не закрывать автоматически
-              },
-            } as ExtendedNotificationContentInput,
-            trigger: null,
-          })
         }
       }
     } catch (e) {
