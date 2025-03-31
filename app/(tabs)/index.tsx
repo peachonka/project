@@ -1,4 +1,4 @@
-"use client"
+// app/(tabs)/index.tsx
 
 import { useState, useCallback, useEffect, useRef } from "react"
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ToastAndroid, ScrollView, Platform } from "react-native"
@@ -12,6 +12,7 @@ import * as Notifications from "expo-notifications"
 import stationsData from "@/assets/stations.json"
 import * as TaskManager from "expo-task-manager"
 import AsyncStorage from "@react-native-async-storage/async-storage"
+import { useTheme } from '@react-navigation/native';
 
 // Constants
 const SELECTED_STATION_KEY = "selectedStation"
@@ -136,6 +137,8 @@ export default function VariantScreen() {
   const [isWaiting, setIsWaiting] = useState(false)
   const soundRef = useRef<Audio.Sound | null>(null)
   const locationSubscription = useRef<Location.LocationSubscription | null>(null)
+  // В начале компонента VariantScreen получите colors из темы
+  const { colors } = useTheme();
 
   // Load initial state
   useEffect(() => {
@@ -456,6 +459,111 @@ export default function VariantScreen() {
     }
   }, [])
 
+  // Styles
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+    padding: 10,
+  },
+  inputContainer: {
+    margin: 20,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  input: {
+    backgroundColor: colors.card,
+    padding: Platform.OS === "ios" ? 16 : 12,
+    borderRadius: 12,
+    fontSize: 16,
+    color: colors.text,
+    elevation: 5,
+  },
+  suggestionsContainer: {
+    margin: 20,
+    marginTop: 0,
+    borderRadius: 12,
+    overflow: "hidden",
+    maxHeight: 300,
+  },
+  blurContainer: {
+    overflow: "hidden",
+    backgroundColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.9)" : undefined,
+  },
+  suggestionsList: {
+    backgroundColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.9)" : undefined,
+  },
+  suggestionItem: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  suggestionText: {
+    fontSize: 16,
+    color: colors.text,
+    marginRight: 10,
+  },
+  suggestionTextLine: {
+    fontSize: 12,
+    color: colors.text,
+    marginRight: 10,
+  },
+  selectedContainer: {
+    margin: 20,
+    padding: 20,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    // shadowColor: "#000",
+    // shadowOffset: {
+    //   width: 0,
+    //   height: 2,
+    // },
+    // shadowOpacity: 0.05,
+    // shadowRadius: 3.84,
+    elevation: 5,
+  },
+  selectedLabel: {
+    fontSize: 14,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  selectedVariant: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  coordinatesContainer: {
+    marginTop: 10,
+    padding: 0,
+  },
+  button: {
+    bottom: 0,
+    width: "90%",
+    alignSelf: "center",
+    backgroundColor: "#7A27AB",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    margin: 20,
+  },
+  buttonDisabled: {
+    bottom: 0,
+    width: "90%",
+    alignSelf: "center",
+    backgroundColor: colors.background,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    margin: 20,
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+})
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.inputContainer}>
@@ -468,7 +576,7 @@ export default function VariantScreen() {
         />
       </View>
 
-      {suggestions.length > 0 && (
+      {suggestions.length > 0 ? (
         <Animated.View entering={FadeInDown} exiting={FadeOutDown} style={styles.suggestionsContainer}>
           <BlurView intensity={50} style={styles.blurContainer}>
             <ScrollView style={styles.suggestionsList}>
@@ -485,9 +593,8 @@ export default function VariantScreen() {
             </ScrollView>
           </BlurView>
         </Animated.View>
-      )}
-
-      {selectedStation && (
+      ):
+      selectedStation && (
         <View style={styles.selectedContainer}>
           <Text style={styles.selectedLabel}>Выбранная станция:</Text>
           <Text style={styles.selectedVariant}>{selectedStation.name}</Text>
@@ -519,111 +626,4 @@ export default function VariantScreen() {
     </SafeAreaView>
   )
 }
-
-// Styles
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-    padding: 10,
-  },
-  inputContainer: {
-    margin: 20,
-    borderColor: "#BFBFBF",
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  input: {
-    backgroundColor: "#fff",
-    padding: Platform.OS === "ios" ? 16 : 12,
-    borderRadius: 12,
-    fontSize: 16,
-    color: "#1e293b",
-    elevation: 5,
-  },
-  suggestionsContainer: {
-    margin: 20,
-    marginTop: 0,
-    borderRadius: 12,
-    overflow: "hidden",
-    maxHeight: 300,
-  },
-  blurContainer: {
-    overflow: "hidden",
-    backgroundColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.9)" : undefined,
-  },
-  suggestionsList: {
-    backgroundColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.9)" : undefined,
-  },
-  suggestionItem: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e5e5",
-  },
-  suggestionText: {
-    fontSize: 16,
-    color: "#1e293b",
-    marginRight: 10,
-  },
-  suggestionTextLine: {
-    fontSize: 12,
-    color: "grey",
-    marginRight: 10,
-  },
-  selectedContainer: {
-    margin: 20,
-    padding: 20,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  selectedLabel: {
-    fontSize: 14,
-    color: "#64748b",
-    marginBottom: 8,
-  },
-  selectedVariant: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#1e293b",
-  },
-  coordinatesContainer: {
-    marginTop: 10,
-    padding: 0,
-  },
-  button: {
-    position: "absolute",
-    bottom: 0,
-    width: "90%",
-    alignSelf: "center",
-    backgroundColor: "#7A27AB",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    margin: 20,
-  },
-  buttonDisabled: {
-    position: "absolute",
-    bottom: 0,
-    width: "90%",
-    alignSelf: "center",
-    backgroundColor: "gray",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    margin: 20,
-  },
-  buttonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-})
 

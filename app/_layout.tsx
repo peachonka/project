@@ -1,24 +1,26 @@
-import { useEffect } from 'react';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-
-declare global {
-  interface Window {
-    frameworkReady?: () => void;
-  }
-}
+// app/_layout.tsx
+import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
+import { SettingsProvider } from '../contexts/SettingsContext';
+import RootLayoutNav from './RootLayoutNav';
+import { useSettings } from '../contexts/SettingsContext';
 
 export default function RootLayout() {
-  useEffect(() => {
-    window.frameworkReady?.();
-  }, []);
-
   return (
-    <>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </>
+    <SettingsProvider>
+      <ThemeWrapper>
+        <RootLayoutNav />
+      </ThemeWrapper>
+    </SettingsProvider>
+  );
+}
+
+function ThemeWrapper({ children }: { children: React.ReactNode }) {
+  const { theme } = useSettings();
+  const navigationTheme = theme === 'dark' ? DarkTheme : DefaultTheme;
+  
+  return (
+    <ThemeProvider value={navigationTheme}>
+      {children}
+    </ThemeProvider>
   );
 }
