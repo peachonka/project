@@ -1,7 +1,7 @@
 // app/(tabs)/index.tsx
 
 import { useState, useCallback, useEffect, useRef } from "react"
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ToastAndroid, ScrollView, Platform } from "react-native"
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ToastAndroid, ScrollView, Platform, Vibration  } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { BlurView } from "expo-blur"
 import Fuse from "fuse.js"
@@ -13,6 +13,7 @@ import stationsData from "@/assets/stations.json"
 import * as TaskManager from "expo-task-manager"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import { useTheme } from '@react-navigation/native';
+import { useSettings } from '../../contexts/SettingsContext';
 
 // Constants
 const SELECTED_STATION_KEY = "selectedStation"
@@ -139,6 +140,7 @@ export default function VariantScreen() {
   const locationSubscription = useRef<Location.LocationSubscription | null>(null)
   // В начале компонента VariantScreen получите colors из темы
   const { colors } = useTheme();
+  const { soundEnabled, vibrationEnabled } = useSettings();
 
   // Load initial state
   useEffect(() => {
@@ -169,8 +171,8 @@ export default function VariantScreen() {
       Notifications.setNotificationChannelAsync("alarm", {
         name: "Alarm notifications",
         importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        sound: "alert.mp3",
+        vibrationPattern: vibrationEnabled ? [0, 250, 250, 250] : null,
+        sound: soundEnabled ? "alert.mp3" : null,
         enableVibrate: true,
       })
     }
@@ -179,7 +181,7 @@ export default function VariantScreen() {
       await Notifications.requestPermissionsAsync()
     }
     requestNotificationPermission()
-  }, [])
+  }, [soundEnabled, vibrationEnabled])
 
   // Location tracking
   useEffect(() => {
@@ -288,23 +290,41 @@ export default function VariantScreen() {
 
   const playBackgroundMusic = async () => {
     try {
+      console.log('Current settings - sound:', soundEnabled, 'vibration:', vibrationEnabled);
       if (soundRef.current) {
         const status = await soundRef.current.getStatusAsync()
         if (status.isLoaded && status.isPlaying) return
       }
 
+      // Настраиваем аудио режим только если звук включен
+    if (soundEnabled) {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: true,
         shouldDuckAndroid: true,
-      })
+      });
 
-      const { sound } = await Audio.Sound.createAsync(require("@/assets/alert.mp3"), {
-        shouldPlay: true,
-        isLooping: true,
-      })
+      // Создаем и воспроизводим звук
+      const { sound } = await Audio.Sound.createAsync(
+        require("@/assets/alert.mp3"),
+        {
+          shouldPlay: true,
+          isLooping: true,
+        }
+      );
+      soundRef.current = sound;
+    }
 
-      soundRef.current = sound
+    // Добавляем вибрацию, если она включена
+    if (vibrationEnabled) {
+      if (Platform.OS === 'android') {
+        const pattern = [0, 500, 200, 500] // Паттерн вибрации: ждать 0мс, вибрировать 500мс, ждать 200мс, вибрировать 500мс
+        Vibration.vibrate(pattern, true) // true означает повторение
+      } else {
+        Vibration.vibrate() // Для iOS просто вибрируем
+      }
+    }
+
       setIsPlaying(true)
       await AsyncStorage.setItem(IS_PLAYING_KEY, "true")
 
@@ -318,6 +338,8 @@ export default function VariantScreen() {
             data: { action: "alarm" },
             android: {
               channelId: "alarm",
+              sound: soundEnabled ? "alert.mp3" : null, // Учитываем настройку звука
+              vibrate: vibrationEnabled ? [0, 250, 250, 250] : null, // Учитываем настройку вибрации
               actions: [
                 {
                   title: "Остановить",
@@ -347,15 +369,16 @@ export default function VariantScreen() {
         console.log("Sound stopped, unloading...")
         await soundRef.current.unloadAsync()
         soundRef.current = null
-        setIsPlaying(false)
-        await AsyncStorage.setItem(IS_PLAYING_KEY, "false")
-        console.log("Sound fully stopped and unloaded")
       } catch (error) {
         console.error("Error stopping sound:", error)
       }
     } else {
       console.log("No sound instance to stop")
     }
+    Vibration.cancel() // Отменяем вибрацию
+    setIsPlaying(false)
+    await AsyncStorage.setItem(IS_PLAYING_KEY, "false")
+    console.log("Sound fully stopped and unloaded")
   }
 
   const handleStartStop = async () => {
