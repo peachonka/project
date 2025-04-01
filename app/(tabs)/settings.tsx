@@ -104,21 +104,21 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.settingItem}>
-          <View style={styles.settingInfo}>
-            <MaterialIcons 
-              name={vibrationEnabled ? 'vibration' : 'notifications-off'} 
-              size={24} 
-              color={theme === 'dark' ? '#94a3b8' : '#1e293b'} 
-            />
-            <Text style={styles.settingText}>Вибрация</Text>
-          </View>
-          <Switch
-            value={vibrationEnabled}
-            onValueChange={toggleVibration}
-            trackColor={{ false: '#e2e8f0', true: '#7A27AB' }}
-            thumbColor="#f8fafc"
+        <View style={styles.settingInfo}>
+          <MaterialIcons 
+            name={vibrationEnabled ? 'vibration' : 'notifications-off'} 
+            size={24} 
+            color={theme === 'dark' ? '#94a3b8' : '#1e293b'} 
           />
+          <Text style={styles.settingText}>Вибрация</Text>
         </View>
+        <Switch
+          value={vibrationEnabled}
+          onValueChange={toggleVibration}
+          trackColor={{ false: '#e2e8f0', true: '#7A27AB' }}
+          thumbColor="#f8fafc"
+        />
+      </View>
       </View>
     </SafeAreaView>
   );

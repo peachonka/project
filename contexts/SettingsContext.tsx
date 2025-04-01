@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Appearance } from 'react-native';
+import { Appearance, ToastAndroid } from 'react-native'; 
 
 type SettingsContextType = {
   theme: 'light' | 'dark';
@@ -54,15 +54,25 @@ export const SettingsProvider: React.FC<{children: React.ReactNode}> = ({ childr
   };
 
   const toggleSound = async () => {
-    const newValue = !soundEnabled;
-    setSoundEnabled(newValue);
-    await AsyncStorage.setItem('app_sound', String(newValue));
+    if (soundEnabled && vibrationEnabled || !soundEnabled){
+      const newValue = !soundEnabled;
+      setSoundEnabled(newValue);
+      await AsyncStorage.setItem('app_sound', String(newValue));
+    }
+    else{
+      ToastAndroid.show("Вы не можете выключить звук, если вибрация отключена", ToastAndroid.SHORT);
+    }
   };
 
   const toggleVibration = async () => {
-    const newValue = !vibrationEnabled;
-    setVibrationEnabled(newValue);
-    await AsyncStorage.setItem('app_vibration', String(newValue));
+    if (soundEnabled && vibrationEnabled || !vibrationEnabled){
+      const newValue = !vibrationEnabled;
+      setVibrationEnabled(newValue);
+      await AsyncStorage.setItem('app_vibration', String(newValue));
+    }
+    else {
+      ToastAndroid.show("Вы не можете выключить вибрацию, если звук отключен", ToastAndroid.SHORT);
+    }
   };
 
   return (
