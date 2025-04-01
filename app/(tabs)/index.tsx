@@ -9,7 +9,7 @@ import Animated, { FadeInDown, FadeOutDown } from "react-native-reanimated"
 import * as Location from "expo-location"
 import { Audio } from "expo-av"
 import * as Notifications from "expo-notifications"
-import stationsData from "@/assets/stations.json"
+import stationsData from "@/assets/stations_with_indexes.json"
 import * as TaskManager from "expo-task-manager"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import { useTheme } from '@react-navigation/native';
@@ -33,6 +33,7 @@ interface Station {
     id: string
     hex_color: string
     name: string
+    index: string
   }
 }
 
@@ -122,6 +123,7 @@ const stations: Station[] = stationsData.lines.flatMap((line) =>
       id: line.id,
       hex_color: line.hex_color,
       name: line.name,
+      index: line.index,
     },
   })),
 )
@@ -513,15 +515,36 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  suggestionContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  textContainer: {
+    flex: 1,
+  },
   suggestionText: {
     fontSize: 16,
     color: colors.text,
-    marginRight: 10,
+    marginBottom: 4,
   },
   suggestionTextLine: {
     fontSize: 12,
     color: colors.text,
-    marginRight: 10,
+    opacity: 0.8,
+  },
+  indexCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  indexText: {
+    fontSize: 14,
+    color: '#fff', // Белый текст для лучшей читаемости
+    fontWeight: 'bold',
   },
   selectedContainer: {
     margin: 20,
@@ -600,8 +623,15 @@ const styles = StyleSheet.create({
                   style={styles.suggestionItem}
                   onPress={() => handleSelectVariant(suggestion)}
                 >
-                  <Text style={styles.suggestionText}>{suggestion.name}</Text>
-                  <Text style={styles.suggestionTextLine}>{suggestion.line.name}</Text>
+                  <View style={styles.suggestionContent}>
+                    <View style={styles.textContainer}>
+                      <Text style={styles.suggestionText}>{suggestion.name}</Text>
+                      <Text style={styles.suggestionTextLine}>{suggestion.line.name}</Text>
+                    </View>
+                    <View style={[styles.indexCircle, { backgroundColor: `#${suggestion.line.hex_color}` }]}>
+                      <Text style={styles.indexText}>{suggestion.line.index}</Text>
+                    </View>
+                  </View>
                 </TouchableOpacity>
               ))}
             </ScrollView>

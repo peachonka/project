@@ -29,7 +29,7 @@
     "expo-location": "~18.0.8",
     "expo-notifications": "~0.29.14",
     "expo-router": "~4.0.19",
-    "expo-splash-screen": "^0.29.22",
+    "expo-splash-screen": "~0.29.22",
     "expo-status-bar": "^2.0.1",
     "expo-symbols": "^0.2.2",
     "expo-system-ui": "^4.0.7",
