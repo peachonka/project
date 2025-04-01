@@ -100,6 +100,9 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: { data?: any;
       if (stationData && isWaitingStr === "true") {
         const station = JSON.parse(stationData)
         const distance = calculateDistance(location.coords, station)
+        // // Добавляем условие дебаунса (не чаще чем раз в 15 секунд)
+        // const lastTriggered = await AsyncStorage.getItem('LAST_ALARM_TRIGGER');
+        // const now = Date.now();
 
         if (distance < ALARM_DISTANCE_KM && isPlayingStr !== "true") {
           await AsyncStorage.setItem(IS_PLAYING_KEY, "true")
@@ -289,11 +292,18 @@ export default function VariantScreen() {
   }, [])
 
   const playBackgroundMusic = async () => {
+    if (isPlaying) {
+      console.log("Alarm is already playing - skipping");
+      return;
+    }
     try {
-      console.log('Current settings - sound:', soundEnabled, 'vibration:', vibrationEnabled);
-      if (soundRef.current) {
-        const status = await soundRef.current.getStatusAsync()
-        if (status.isLoaded && status.isPlaying) return
+
+      await stopBackgroundMusic();
+    
+      // Если оба режима выключены - не продолжаем
+      if (!soundEnabled && !vibrationEnabled) {
+        console.log('Both sound and vibration disabled - not starting alarm');
+        return;
       }
 
       // Настраиваем аудио режим только если звук включен
@@ -431,56 +441,37 @@ export default function VariantScreen() {
 
   // Обработчик уведомлений
   useEffect(() => {
-    // Обработчик для уведомлений, полученных когда приложение открыто
     const notificationReceivedSubscription = Notifications.addNotificationReceivedListener(async (notification) => {
-      if (notification.request.content.data?.action === "alarm") {
-        await playBackgroundMusic()
-      }
-    })
-
-    // Обработчик для действий с уведомлениями (нажатие на кнопку или само уведомление)
-    const responseReceivedSubscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
-      console.log("Notification response received:", response.actionIdentifier)
-
-      // Проверяем, была ли нажата кнопка "Остановить" или просто уведомление
-      if (
-        response.actionIdentifier === "stop" ||
-        response.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER
-      ) {
-        console.log("Stop action triggered")
-
-        // Останавливаем звук
-        await stopBackgroundMusic()
-
-        // Обновляем состояние
-        setIsPlaying(false)
-        setIsWaiting(false)
-        await AsyncStorage.setItem(IS_PLAYING_KEY, "false")
-        await AsyncStorage.setItem(IS_WAITING_KEY, "false")
-
-        // Удаляем все уведомления
-        await Notifications.dismissAllNotificationsAsync()
-
-        // Останавливаем отслеживание местоположения
-        if (Platform.OS === "android") {
-          try {
-            const isTaskRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME)
-            if (isTaskRegistered) {
-              await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME)
-              console.log("Location tracking stopped")
-            }
-          } catch (error) {
-            console.error("Error stopping location:", error)
-          }
+      if (notification.request.content.data?.action === "trigger_alarm") {
+        if (soundEnabled || vibrationEnabled) {
+          await playBackgroundMusic();
         }
       }
-    })
-
+    });
+  
+    const responseReceivedSubscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
+      if (response.actionIdentifier === "stop" || response.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+        await stopBackgroundMusic();
+        setIsPlaying(false);
+        setIsWaiting(false);
+        await AsyncStorage.multiSet([
+          [IS_PLAYING_KEY, "false"],
+          [IS_WAITING_KEY, "false"],
+          ['LAST_ALARM_TRIGGER', "0"]
+        ]);
+        await Notifications.dismissAllNotificationsAsync();
+        
+        if (Platform.OS === "android") {
+          await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+        }
+      }
+    });
+  
     return () => {
-      notificationReceivedSubscription.remove()
-      responseReceivedSubscription.remove()
-    }
-  }, [])
+      notificationReceivedSubscription.remove();
+      responseReceivedSubscription.remove();
+    };
+  }, [soundEnabled, vibrationEnabled]);
 
   // Styles
 const styles = StyleSheet.create({
