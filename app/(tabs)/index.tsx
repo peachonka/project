@@ -589,7 +589,7 @@ export default function VariantScreen() {
     bottom: 0,
     width: "90%",
     alignSelf: "center",
-    backgroundColor: colors.background,
+    backgroundColor: colors.notification,
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
