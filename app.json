@@ -44,6 +44,7 @@
         "FOREGROUND_SERVICE",
         "android.permission.RECEIVE_BOOT_COMPLETED" 
       ],
+      "googleServicesFile": "./google-services.json",
       "taskManager": {
         "tasks": [
           {

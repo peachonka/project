@@ -394,7 +394,27 @@ export default function VariantScreen() {
     console.log("Sound fully stopped and unloaded")
   }
 
+  const checkPermissions = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      ToastAndroid.show('Необходимо разрешение на доступ к геолокации', ToastAndroid.LONG);
+      return false;
+    }
+    
+    if (Platform.OS === 'android') {
+      const bgStatus = await Location.requestBackgroundPermissionsAsync();
+      if (bgStatus.status !== 'granted') {
+        ToastAndroid.show('Для работы в фоне нужно разрешение', ToastAndroid.LONG);
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
   const handleStartStop = async () => {
+    if (!(await checkPermissions())) return;
+    
     if (!selectedStation) {
       ToastAndroid.show("Выберите станцию", ToastAndroid.SHORT)
       return
