@@ -86,7 +86,7 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.peachonka.boltexponativewind'
+    namespace "com.metrobudilnik"
     defaultConfig {
         applicationId 'com.peachonka.boltexponativewind'
         minSdkVersion rootProject.ext.minSdkVersion
