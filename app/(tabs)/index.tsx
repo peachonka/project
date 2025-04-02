@@ -485,7 +485,7 @@ export default function VariantScreen() {
     },
     inputContainer: {
       margin: 20,
-      borderColor: colors.border,
+      borderColor: !isFocused ? colors.border : '#7A27AB',
       borderRadius: 10,
       borderWidth: 1,
     },
