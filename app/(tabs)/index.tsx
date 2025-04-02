@@ -146,6 +146,7 @@ export default function VariantScreen() {
   // В начале компонента VariantScreen получите colors из темы
   const { colors } = useTheme();
   const { soundEnabled, vibrationEnabled } = useSettings();
+  const [isFocused, setIsFocused] = useState(false);
 
   // Load initial state
   useEffect(() => {
@@ -476,26 +477,26 @@ export default function VariantScreen() {
   }, [soundEnabled, vibrationEnabled]);
 
   // Styles
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 10,
-  },
-  inputContainer: {
-    margin: 20,
-    borderColor: colors.border,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  input: {
-    backgroundColor: colors.card,
-    padding: Platform.OS === "ios" ? 16 : 12,
-    borderRadius: 12,
-    fontSize: 16,
-    color: colors.text,
-    elevation: 5,
-  },
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      padding: 10,
+    },
+    inputContainer: {
+      margin: 20,
+      borderColor: colors.border,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    input: {
+      backgroundColor: colors.card,
+      padding: Platform.OS === "ios" ? 16 : 12,
+      borderRadius: 12,
+      fontSize: 16,
+      color: colors.text,
+      elevation: 5,
+    },
   suggestionsContainer: {
     margin: 20,
     marginTop: 0,
@@ -549,7 +550,7 @@ const styles = StyleSheet.create({
   selectedContainer: {
     margin: 20,
     padding: 20,
-    backgroundColor: colors.background,
+    backgroundColor: colors.card,
     borderRadius: 12,
     // shadowColor: "#000",
     // shadowOffset: {
@@ -558,7 +559,7 @@ const styles = StyleSheet.create({
     // },
     // shadowOpacity: 0.05,
     // shadowRadius: 3.84,
-    elevation: 5,
+    elevation: 1,
   },
   selectedLabel: {
     fontSize: 14,
@@ -599,6 +600,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
+
 })
 
   return (
@@ -610,6 +612,8 @@ const styles = StyleSheet.create({
           onChangeText={handleInputChange}
           placeholder="Начните вводить название станции..."
           placeholderTextColor="#94a3b8"
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
         />
       </View>
 
