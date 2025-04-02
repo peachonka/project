@@ -31,12 +31,18 @@
       }
     },
     "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#7A27AB"
+      },
       "package": "com.peachonka.boltexponativewind",
+      "versionCode": 1,
       "permissions": [
         "ACCESS_BACKGROUND_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "FOREGROUND_SERVICE"
+        "FOREGROUND_SERVICE",
+        "android.permission.RECEIVE_BOOT_COMPLETED" 
       ],
       "taskManager": {
         "tasks": [
