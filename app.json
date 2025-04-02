@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Метробудильник",
-    "slug": "bolt-expo-nativewind",
+    "slug": "SubwayAlarm",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
