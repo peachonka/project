@@ -86,12 +86,7 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    aaptOptions {
-        ignoreAssetsPattern '!*.webp:!*.png:!*.jpg' // Оставить только один формат
-        additionalParameters '--no-version-vectors'
-    }
-
-    namespace "com.metrobudilnik"
+    namespace 'com.peachonka.boltexponativewind'
     defaultConfig {
         applicationId 'com.peachonka.boltexponativewind'
         minSdkVersion rootProject.ext.minSdkVersion
